@@ -1,5 +1,5 @@
 import { sendWelcomeEmail } from "../emails/emailHandlers.js";
-import { generateToken } from "../lib/utils.js";
+import { authCookieOptions, generateToken } from "../lib/utils.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import { ENV } from "../lib/env.js";
@@ -54,7 +54,7 @@ export const signup = async (req, res) => {
       });
 
       try {
-        await sendWelcomeEmail(savedUser.email, savedUser.fullName, ENV.CLIENT_URL);
+        await sendWelcomeEmail(savedUser.email, savedUser.fullName, ENV.CLIENT_ORIGINS[0]);
       } catch (error) {
         console.error("Failed to send welcome email:", error);
       }
@@ -97,7 +97,8 @@ export const login = async (req, res) => {
 };
 
 export const logout = (_, res) => {
-  res.cookie("jwt", "", { maxAge: 0 });
+  // Same attributes as when it was set, or a cross-site browser ignores the clear and stays logged in.
+  res.clearCookie("jwt", authCookieOptions());
   res.status(200).json({ message: "Logged out successfully" });
 };
 
