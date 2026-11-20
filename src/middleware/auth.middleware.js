@@ -1,18 +1,22 @@
-import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import { ENV } from "../lib/env.js";
+import { verifyToken } from "../lib/utils.js";
 
 export const protectRoute = async (req, res, next) => {
+  const token = req.cookies.jwt;
+  if (!token) return res.status(401).json({ message: "Please sign in." });
+
+  let decoded;
   try {
-    const token = req.cookies.jwt;
-    if (!token) return res.status(401).json({ message: "Unauthorized - No token provided" });
+    decoded = verifyToken(token);
+  } catch {
+    // Expired or tampered: the browser should sign in again, not see a server error.
+    return res.status(401).json({ message: "Your session ended. Please sign in again." });
+  }
+  if (decoded.purpose) return res.status(401).json({ message: "Please sign in." });
 
-    const decoded = jwt.verify(token, ENV.JWT_SECRET);
-    if (!decoded) return res.status(401).json({ message: "Unauthorized - Invalid token" });
-
+  try {
     const user = await User.findById(decoded.userId).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
-
+    if (!user) return res.status(401).json({ message: "Please sign in." });
     req.user = user;
     next();
   } catch (error) {

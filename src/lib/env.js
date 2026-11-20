@@ -20,4 +20,8 @@ export const ENV = {
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
   ARCJET_KEY: process.env.ARCJET_KEY,
   ARCJET_ENV: process.env.ARCJET_ENV,
+  // Web Push. Generate once with `npx web-push generate-vapid-keys`; without them push is off.
+  VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+  VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+  VAPID_SUBJECT: process.env.VAPID_SUBJECT,
 };

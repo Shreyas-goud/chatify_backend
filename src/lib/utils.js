@@ -1,35 +1,28 @@
 import jwt from "jsonwebtoken";
 import { ENV } from "./env.js";
 
-// Deployed, the app and the API are different sites (Vercel and Render), so the cookie needs
-// SameSite=None, which browsers only accept together with Secure. Local dev runs on plain http,
-// where Secure is off, so it uses Lax: localhost:5173 and localhost:3000 count as the same site.
-export const authCookieOptions = () => {
-  const deployed = ENV.NODE_ENV !== "development";
-  return {
-    httpOnly: true, // prevent XSS attacks: cross-site scripting
-    sameSite: deployed ? "none" : "lax",
-    secure: deployed,
-  };
+const requireSecret = () => {
+  if (!ENV.JWT_SECRET) throw new Error("JWT_SECRET is not configured");
+  return ENV.JWT_SECRET;
 };
 
+// The website reaches the API through its own domain (Vercel rewrites /api to Render, and Vite
+// proxies it in dev), so the cookie is first-party and Lax works everywhere, Safari included.
+export const authCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: "lax",
+  secure: ENV.NODE_ENV !== "development",
+});
+
 export const generateToken = (userId, res) => {
-  const { JWT_SECRET } = ENV;
-  if (!JWT_SECRET) {
-    throw new Error("JWT_SECRET is not configured");
-  }
-
-  const token = jwt.sign({ userId }, JWT_SECRET, {
-    expiresIn: "7d",
-  });
-
-  res.cookie("jwt", token, {
-    ...authCookieOptions(),
-    maxAge: 7 * 24 * 60 * 60 * 1000, // MS
-  });
-
+  const token = jwt.sign({ userId }, requireSecret(), { expiresIn: "7d" });
+  res.cookie("jwt", token, { ...authCookieOptions(), maxAge: 7 * 24 * 60 * 60 * 1000 });
   return token;
 };
 
-// http://localhost
-// https://dsmakmk.com
+// The socket connects straight to Render (Vercel can't pass WebSockets through), where the
+// first-party cookie isn't sent. It authenticates with this short-lived token instead.
+export const createSocketToken = (userId) =>
+  jwt.sign({ userId: String(userId), purpose: "socket" }, requireSecret(), { expiresIn: "2m" });
+
+export const verifyToken = (token) => jwt.verify(token, requireSecret());

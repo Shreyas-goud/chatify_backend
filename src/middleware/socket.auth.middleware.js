@@ -1,43 +1,35 @@
-import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import { ENV } from "../lib/env.js";
+import { verifyToken } from "../lib/utils.js";
+
+const cookieToken = (cookieHeader) =>
+  cookieHeader
+    ?.split("; ")
+    .find((row) => row.startsWith("jwt="))
+    ?.slice(4);
 
 export const socketAuthMiddleware = async (socket, next) => {
   try {
-    // extract token from http-only cookies
-    const token = socket.handshake.headers.cookie
-      ?.split("; ")
-      .find((row) => row.startsWith("jwt="))
-      ?.split("=")[1];
-
-    if (!token) {
-      console.log("Socket connection rejected: No token provided");
-      return next(new Error("Unauthorized - No Token Provided"));
+    const handshakeToken = socket.handshake.auth?.token;
+    let userId;
+    if (handshakeToken) {
+      const decoded = verifyToken(handshakeToken);
+      if (decoded.purpose !== "socket") throw new Error("wrong token purpose");
+      userId = decoded.userId;
+    } else {
+      // Same-site setups (e.g. one custom domain) can still use the session cookie.
+      const token = cookieToken(socket.handshake.headers.cookie);
+      if (!token) return next(new Error("Unauthorized"));
+      userId = verifyToken(token).userId;
     }
 
-    // verify the token
-    const decoded = jwt.verify(token, ENV.JWT_SECRET);
-    if (!decoded) {
-      console.log("Socket connection rejected: Invalid token");
-      return next(new Error("Unauthorized - Invalid Token"));
-    }
+    const user = await User.findById(userId).select("_id fullName");
+    if (!user) return next(new Error("Unauthorized"));
 
-    // find the user fromdb
-    const user = await User.findById(decoded.userId).select("-password");
-    if (!user) {
-      console.log("Socket connection rejected: User not found");
-      return next(new Error("User not found"));
-    }
-
-    // attach user info to socket
     socket.user = user;
-    socket.userId = user._id.toString();
-
-    console.log(`Socket authenticated for user: ${user.fullName} (${user._id})`);
-
+    socket.userId = String(user._id);
     next();
   } catch (error) {
-    console.log("Error in socket authentication:", error.message);
-    next(new Error("Unauthorized - Authentication failed"));
+    console.log("Socket authentication failed:", error.message);
+    next(new Error("Unauthorized"));
   }
 };
